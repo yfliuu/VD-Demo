@@ -26,21 +26,23 @@ function moved() {
 }
 
 $("#distMetricButton :input").change(function() {
-    console.log($this);
+    console.log();
 });
 
 function configConfirmCallback() {
     var n = parseInt(document.getElementById("nPts").value);
-    if(n <= 1 || n > 300) {
-        errDiv.text = "The number of points should between 2~300.";
+    var MAX_POINTS = 3000;
+    if(n <= 1 || n > MAX_POINTS) {
+        errDiv.innerHTML = '<font color="red">The number of points should be between 2~' + MAX_POINTS.toString() +  '.</font>';
         errDiv.style.display = "block";
     } else if (Number.isNaN(n)){
-        errDiv.text("Please input something");
+        errDiv.innerHTML = '<font color="red">Please input something.</font>';
         errDiv.style.display = "block";
     } else {
         sitesList = d3.range(n)
             .map(function(d) { return [Math.random() * width, Math.random() * height]; });
         redraw(sitesList);
+        errDiv.style.display = "none"
     }
 }
 
