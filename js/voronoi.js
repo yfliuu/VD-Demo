@@ -13,6 +13,27 @@ var SITE_AUTOID = 0;
 var FACE_AUTOID = 0;
 
 var INFINITY_APPROXIMATE = 10000;
+var CLOSE_THRESHOLD = 0.000001;
+
+var REACH_NONE = 0;
+var REACH_BACKWARD = 1;
+var REACH_FORWARD = 2;
+var REACH_BOTH = 3;
+
+var vertices = [];
+var p = [];
+var left = [];
+var right = [];
+var leftzip = [];
+var rightzip = [];
+var leftedge = [];
+var rightedge = [];
+var tos = 0;
+
+var canvas = d3.select("canvas").node();
+ctx = canvas.getContext("2d"),
+    width = canvas.width,
+    height = canvas.height;
 
 // Represents a segment, ray or line.
 // HalfEdge of DCEL extends this class.
@@ -23,6 +44,7 @@ class Line {
     b = null;
     p1 = null;
     p2 = null;
+    reach = null;
     x_min = -INFINITY_APPROXIMATE;
     x_max = INFINITY_APPROXIMATE;
 
@@ -33,6 +55,22 @@ class Line {
         this.p2 = null;
         this.x_min = -INFINITY_APPROXIMATE;
         this.x_max = INFINITY_APPROXIMATE;
+    }
+
+    static copy(l) {
+        var l = new Line();
+        this.k = l.k;
+        this.b = l.b;
+        this.p1 = l.p1;
+        this.p2 = l.p2;
+        this.reach = l.reach
+        this.x_min = l.x_min;
+        this.x_max = l.x_max;
+        return l;
+    }
+
+    is_length0() {
+        return (this.p1.x == this.p2.x && this.p1.y == this.p2.y);
     }
 
     // Cut the line from p
@@ -91,6 +129,44 @@ class Line {
         return l;
     }
 
+    static perpdiv(p1, p2)
+    {
+        var midx = (p1.x + p2.x) / 2;
+        var midy = (p1.y + p2.y) / 2;
+        var dx = p2.x - p1.x;
+        var dy = p2.y - p1.y;
+        var div = sqrt(dx*dx + dy*dy);
+        var ux = dx / div;
+        var uy = dy / div;
+        var lx = ux * DISTANT;
+        var ly = uy * DISTANT;
+        var r = new Line();
+        r.p1.x = midx + ly;
+        r.p1.y = midy - lx;
+        r.p2.x = midx - ly;
+        r.p2.y = midy + lx;
+        r.reach = REACH_BOTH;
+        return r;
+    }
+
+    static perpthrough(c, p1, p2) {
+        var dx = p2.x - p1.x;
+        var dy = p2.y - p1.y;
+        var div = Math.sqrt(dx*dx + dy*dy);
+        var ux = dx / div;
+        var uy = dy / div;
+        var lx = ux * DISTANT;
+        var ly = uy * DISTANT;
+
+        var r = new Line();
+        r.p1.x = c.x;
+        r.p1.y = c.y;
+        r.p2.x = c.x - ly;
+        r.p2.y = c.y + lx;
+        r.reach = REACH_FORWARD;
+        return r;
+    }
+
     static from_kb(k, b, x_dom_min, x_dom_max) {
         var l = new Line();
         l.k = k; l.b = b;
@@ -109,6 +185,48 @@ class Line {
 
     get_pt(x) {
         return Vertex(x, this.k * x + this.b);
+    }
+
+    static intersect(r, a, b) {
+        var  p1 = a.p1; var p2 = a.p2;
+        var  q1 = b.p1; var q2 = b.p2;
+
+        var  dpy = p2.y - p1.y;
+        var  dpx = p2.x - p1.x;
+        var  dqy = q2.y - q1.y;
+        var  dqx = q2.x - q1.x;
+
+        var  dy = p1.y - q1.y;
+        var  dx = p1.x - q1.x;
+
+        var  div = dqy * dpx - dpy * dqx;
+        var  pnum = dqx * dy - dqy * dx;
+        var  qnum = dpx * dy - dpy * dx;
+
+        var  up, uq, ep, eq;
+
+        if(div == 0) {
+
+            return false;
+        }
+
+        up = pnum / div;
+        uq = qnum / div;
+
+        ep = CLOSE_THRESHOLD / Math.sqrt(dpx * dpx + dpy * dpy);
+        eq = CLOSE_THRESHOLD / Math.sqrt(dqx * dqx + dqy * dqy);
+
+        if((a.reach & REACH_BACKWARD || up >= -ep) &&
+            (a.reach & REACH_FORWARD  || up <= 1+ep) &&
+            (b.reach & REACH_BACKWARD || uq >= -eq) &&
+            (b.reach & REACH_FORWARD  || uq <= 1+eq)
+        ) {
+            r.x = p1.x + up * dpx;
+            r.y = p1.y + up * dpy;
+            return true;
+        }
+
+        return false;
     }
 
     intersection(line) {
@@ -130,8 +248,6 @@ class Line {
         return [k, b];
     }
 }
-
-
 
 function min(fn, iterable) {
     var _min = iterable[0];
@@ -159,7 +275,6 @@ function max(fn, iterable) {
 
 function x_comp(a, b) { return a.x - b.x; }
 
-
 class Face {
     halfedge = null;
     id = null;
@@ -172,15 +287,30 @@ class Face {
 class HalfEdge extends Line {
     // src and tgt are Vertices
     twin = null;
-    target = null;  // Source vertex
+    target = null;  // Target vertex
+    source = null;  // Source vertex, for convenience
     prev = null;    // Previous halfedge
     next = null;    // Next halfedge
     face = null;    // halfedgeident face
+    divline = null;
     id = null;
 
     constructor() {
         super();
         this.id = HALF_EDGE_AUTOID++;
+    }
+
+    pair_with(edge) {
+        this.twin = edge;
+        edge.twin = this;
+    }
+
+    static copy(source, target, divline) {
+        var edge = new HalfEdge();
+        edge.source = source;
+        edge.target = target;
+        edge.divline = divline;
+        return edge;
     }
 
     static from_line(line) {
@@ -200,6 +330,11 @@ class HalfEdge extends Line {
     eq(edge) {
         return self.id == edge.id;
     }
+
+    is_void() {
+        return this.divline.is_length0();
+    }
+
 }
 
 class Vertex {
@@ -207,6 +342,10 @@ class Vertex {
     y = null;
     halfedge = null;   // This is the outgoing edge
     id = null;
+    next = null;
+    prev = null;
+    head_edge = null;
+    tail_edge = null;
 
     constructor(x, y) {
         this.x = x;
@@ -408,7 +547,6 @@ class DCEL {
         return 1
     }
 
-
     // Return the convex hull points of this graph.
     // TODO: Modify algorithm so that the return value is actually a graph instead of points
     static convex_hull_pts(points) {
@@ -439,6 +577,33 @@ class DCEL {
         lower.pop();
         return lower.concat(upper);
     }
+
+    static merge_hull(l, r) {
+        var a, b, c, d, c2, d2;
+
+        a = c = l;  b = d = r;
+
+        c2 = vertices[c].prev;
+        d2 = vertices[d].next;
+        if(p[c].x == p[d].x && p[c2].x == p[d2].x) {
+
+            c = c2;
+            d = d2;
+        }
+        else {
+            upper_line(c, d);
+        }
+
+        lower_line(a, b);
+
+        vertices[c].next = d;
+        vertices[d].prev = c;
+        vertices[b].next = a;
+        vertices[a].prev = b;
+
+        // *l = a;  *r = b;
+        return [a, b];
+    }
 }
 
 class Voronoi extends DCEL {
@@ -448,19 +613,98 @@ class Voronoi extends DCEL {
     sites = null;
     site_map = null;
 
+    build(points) {
+        var r = new Voronoi();
+        for (var i = 0; i < points.length; i++) {
+            this.sites.push(points[i]);
+            this.vertices.push(points[i]);
+        }
+        for (var i = 0; i < points.length; i++) {
+            this.vertices[i].next = this.vertices[i].prev = i;
+            this.vertices[i].head_edge = this.vertices[i].tail_edge = null;
+        }
+        vertices = this.vertices;
+        p = this.vertices.slice(0);
+        var _size = this.sites.length * 2 + 1;
+        leftzip = new Array(_size);
+        rightzip = new Array(_size);
+        leftedge = new Array(_size);
+        rightedge = new Array(_size);
+        left = new Array(_size);
+        right = new Array(_size);
+        if (this.sites.length >= 2) Voronoi.voronoi_rec(0, this.sites.length - 1);
+
+        for (var i = 0; i < this.vertices.length; i++) {
+            var edge, head;
+            edge = head = this.vertices[i].head_edge;
+            if (edge) do {
+                if (edge.target > i) l[j++] = edge.divline;
+                edge = edge.next;
+            } while (!edge.eq(head));
+        }
+        return r;
+    }
+
+    static voronoi_rec(l, r) {
+        var n_points = 1 + r - l;
+        var m;
+
+        if (n_points <= 3) {
+            Voronoi.voronoi_base(l, r, n_points);
+            return;
+        }
+
+        m = (l + r) / 2;
+        Voronoi.voronoi_rec(l, m);
+        Voronoi.voronoi_rec(m + 1, r);
+        Voronoi.voronoi_merge(m);
+    }
+
     // S is a set of Vertices
     constructor() {
         super();
-        this.sites = new Map([]);
-        this.site_map = new Map([]);
+        this.sites = [];
     }
 
-    build(S) {
+    _build(S) {
+        S.sort(function(a, b) { return a.x - b.x });
         return Voronoi.rec_construct_vor(S);
     }
 
     edges() {
         return this.halfedges;
+    }
+
+    static voronoi_base(l, r, n_points) {
+        var q = p[l];
+        var lineA, lineB, lineC;
+
+        if (n_points == 3) {
+            lineA = Line.perpdiv(q[0],q[1]);
+            lineB = Line.perpdiv(q[1],q[2]);
+            var c = new Vertex();
+            if(Line.intersect(c,lineA,lineB)) {
+                if (c.y <= q[1].y) {
+                    lineA = Line.perpthrough(c, q[0], q[1]);
+                    lineB = Line.perpthrough(c, q[1], q[2]);
+                    lineC = Line.perpthrough(c, q[2], q[0]);
+                    construct3(l, l+1, l+2, lineA, lineB, lineC);
+                }
+                else {
+                    lineA = Line.perpthrough(c, q[1], q[0]);
+                    lineB = Line.perpthrough(c, q[2], q[1]);
+                    lineC = Line.perpthrough(c, q[0], q[2]);
+                    construct3(l, l+2, l+1, lineC, lineB, lineA);
+                }
+            }
+            else {
+                construct2(l, l+1, l+2, lineA, lineB);
+            }
+        }
+        else {
+            lineA = Line.perpdiv(q[0], q[1]);
+            construct1(l, l+1, lineA);
+        }
     }
 
     static trivial_voronoi_3(p1, p2, p3) {
@@ -574,7 +818,7 @@ class Voronoi extends DCEL {
         } else {
             // Split & Merge
             // TODO: This sorting should be done only once
-            pts.sort(function(a, b) { return a.x - b.x });
+            // pts.sort(function(a, b) { return a.x - b.x });
 
             var n1 = Math.floor(n / 2);
             var S1 = pts.slice(0, n1);
@@ -585,9 +829,7 @@ class Voronoi extends DCEL {
         }
     }
 
-    static merge_voronoi(vorL, vorR) {
-        console.log(vorL);
-        console.log(vorR);
+    static _merge_voronoi(vorL, vorR) {
         // Construct convex hull of two subgraphs
         var chsL = DCEL.convex_hull_pts(Array.from(vorL.sites.values()));
         var chsR = DCEL.convex_hull_pts(Array.from(vorR.sites.values()));
@@ -597,6 +839,10 @@ class Voronoi extends DCEL {
         var bdgs = Voronoi.bridges(chsL, chsR);
         var ubdg = bdgs[0]; // Upper bridge
         var lbdg = bdgs[1]; // Lower bridge
+
+        drawGraph(Array.from(vorL.sites.values()), [], vorL.edges());
+        drawGraph(Array.from(vorR.sites.values()), [], vorR.edges());
+        drawOutStandingEdges(bdgs);
 
         // First find the bisector of the lower bridge and work our way up
         var sigma_upper_inf = Line.bisector_of(ubdg[0], ubdg[1], -Infinity, Infinity);
@@ -609,26 +855,37 @@ class Voronoi extends DCEL {
         var edger = null;
         var sigma_chain = new DCEL();
         var sigma_stack = [];
+        var il = sitel_ind_in_ch;
+        var ir = siter_ind_in_ch;
 
         // We're going to construct the sigma chain by adding vertices
         // to halfedges. The starting halfedge we'll use is the circle edge
         // of virtual vertex.
         var current_sigma_chain_halfedge = sigma_chain.virtualv.halfedge;
 
+        //----------------
+        var i = 0;
+
+        //----------------
+
         // while current working bridge is not upper bridge
         while (!arr_eq(cur_bdg, lbdg)) {
             var int_l = null; // Intersection of current sigma chain part with some left voronoi edge
             var int_r = null; // Intersection of current sigma chain part with some right voronoi edge
             cur_bdg = [sitel, siter];
+            console.log('sitel', sitel.x, sitel.y);
+            console.log('siter', siter.x, siter.y);
 
-            console.log(cur_bdg);
+            i++;
+            if (i > 7) break;
 
-            // Traverse all voronoi half edges defined by sitel and siter
+            // Traverse all voronoi half edges defined by sitel and eiter
             var face_of_sitel = vorL.site_map.get(sitel.id);
             var traverse_posl = face_of_sitel.halfedge;
             edgel = edgel == null ? traverse_posl : edgel;  // If edgel is not null, this means we didn't switch site at this side last round
             do {
-                int_l = cur_bisector.intersection(edgel);
+                // int_l = cur_bisector.intersection(edgel);
+                int_l = cur_bisector.intersection(traverse_posl);
                 if (int_l != null) break;
                 edgel = edgel.next;
             } while (edgel.eq(traverse_posl));
@@ -637,7 +894,8 @@ class Voronoi extends DCEL {
             var traverse_posr = face_of_siter.halfedge;
             edger = edger == null ? traverse_posr : edger;  // If edger is not null, this means we didn't switch site at this side last round
             do {
-                int_r = cur_bisector.intersection(edger);
+                // int_r = cur_bisector.intersection(edger);
+                int_r = cur_bisector.intersection(traverse_posr);
                 if (int_r != null) break;
                 edger = edger.next;
             } while (edger.eq(traverse_posr));
@@ -646,22 +904,173 @@ class Voronoi extends DCEL {
                 // sigma_chain.add_vertex_at(int_r, current_sigma_chain_halfedge)
                 // The false below means right side
                 sigma_stack.push([int_r, false, edger]);
-                current_sigma_chain_halfedge = int_r.halfedge.twin;
-                siter = chsR[(chsR.length + siter_ind_in_ch - 1) % chsR.length];
-                edgel = null;
+                // current_sigma_chain_halfedge = int_r.halfedge.twin;
+                siter = chsR[(chsR.length + ir - 1) % chsR.length];
+                edger = null;
+                ir = (chsR.length + ir - 1) % chsR.length;
             } else {
                 // sigma_chain.add_vertex_at(int_l, current_sigma_chain_halfedge)
                 sigma_stack.push([int_l, true, edgel]);
-                current_sigma_chain_halfedge = int_l.halfedge.twin;
-                sitel = chsL[(sitel_ind_in_ch + 1) % chsL.length];
-                edger = null;
+                // current_sigma_chain_halfedge = int_l.halfedge.twin;
+                sitel = chsL[(il + 1) % chsL.length];
+                edgel = null;
+                il = (il + 1) % chsL.length;
             }
+            cur_bisector = Line.bisector_of(sitel, siter);
         }
         // Add final infinite part
 
         // Merge vorL, sigma_chain and vorR
-        console.log(sigma_stack);
         return Voronoi.clip_edges_and_merge(vorL, vorR, sigma_stack);
+    }
+
+    static starting_edgea(a, b) {
+        var t;
+        var d, prevd;
+        var edge = new HalfEdge();
+        var end = new HalfEdge();
+
+        end = vertices[a].tail_edge;
+        prevd = clw(p[b], p[a], p[end.target]);
+        edge = end.prev;
+        while(!edge.eq(end)) {
+            if(!edge.is_void()) {
+                t = edge.target;
+                d = clw(p[b], p[a], p[t]);
+                if(!prevd && d) return edge;
+                prevd = d;
+            }
+            edge = edge.prev;
+        }
+
+        return edge;
+    }
+
+    static starting_edgeb(b, a) {
+        var t;
+        var d, prevd;
+        var edge = new HalfEdge();
+        var end = new HalfEdge();
+
+        end = vertices[b].head_edge;
+        prevd = ccw(p[a], p[b], p[end.target]);
+        edge = end.next;
+        while(!edge.eq(end)) {
+            if(!edge.is_void()) {
+                t = edge.target;
+                d = ccw(p[a], p[b], p[t]);
+                if(!prevd && d) return edge;
+                prevd = d;
+            }
+            edge = edge.next;
+        }
+
+        return edge;
+    }
+
+    static voronoi_merge(m) {
+        // line_t zip;
+        var zip = new Line();
+        var  a, b, ac, bc;
+        var x = new Vertex(Infinity, Infinity);
+        var xa = new Vertex(Infinity, Infinity);
+        var xb = new Vertex(Infinity, Infinity);
+        var edgea = new HalfEdge();
+        var edgeb = new HalfEdge();
+        var starta = new HalfEdge();
+        var startb = new HalfEdge();
+
+        a = m;  b = m + 1;
+        var tmp = merge_hull(a, b);
+        a = tmp[0]; b = tmp[1];
+
+        zip = Line.perpdiv(p[a],p[b]);
+
+        edgea = starta = starting_edgea(a, b);
+        edgeb = startb = starting_edgeb(b, a);
+        for(;;) {
+
+            ac = 0;
+            do {
+                if(!edgea.is_void()) {
+
+                    if(ccw(p[b], p[a], p[edgea.target], true)) break;
+
+                    if(Line.intersect(xa, zip, edgea.divline)) {
+                        ac = 1;
+                        break;
+                    }
+                }
+
+                edgea = edgea.prev;
+            } while(!edgea.eq(starta));
+
+            bc = 0;
+            do {
+                if(!edgeb.is_void()) {
+                    if(clw(p[a], p[b], p[edgeb.target], true)) break;
+                    if(intersect(xb, zip, edgeb.divline)) {
+                        bc = 1;
+                        break;
+                    }
+                }
+                edgeb = edgeb.next;
+            } while(!edgeb.eq(startb));
+
+            if(!(ac || bc)) break;
+
+            if(bc == 0 || (ac && xa.y <= xb.y)) {
+
+                if(snap_point(xa, edgea.divline)) {
+
+                    var czip = zip;
+                    fix_p2(czip, xa);
+                    if(dist2(czip.p1, czip.p2) < CLOSE * CLOSE) {
+                        czip = moveline(zip, xa);
+                    }
+                    rclip(edgea.divline, czip, xa);
+                    rdelete(a, czip, xa);
+                }
+                else {
+
+                    if(dist2(zip.p1, xa) < CLOSE * CLOSE) xa = zip.p1;
+                    rclip(edgea.divline, zip, xa);
+                    rdelete(a, zip, xa);
+                }
+                fix_p2(zip,xa);
+                push_zipline(a, b, edgea, edgeb, zip);
+                x = xa;
+                a = edgea.target;
+                edgea = starta = starting_edgea(a, b);
+            }
+            else {
+                if(snap_point(xb, edgeb.divline)) {
+                    var czip = zip;
+                    fix_p2(czip, xb);
+                    if(dist2(czip.p1, czip.p2) < CLOSE * CLOSE) {
+                        czip = moveline(zip, xb);
+                    }
+                    lclip(edgeb.divline, czip, xb);
+                    ldelete(b, czip, xb);
+                }
+                else {
+                    if(dist2(zip.p1, xb) < CLOSE * CLOSE) xb = zip.p1;
+                    lclip(edgeb.divline, zip, xb);
+                    ldelete(b, zip, xb);
+                }
+                fix_p2(zip, xb);
+                push_zipline(a, b, edgea, edgeb, zip);
+                x = xb;
+                b = edgeb.target;
+                edgeb = startb = starting_edgeb(b, a);
+            }
+
+            zip = Line.perpthrough(x, p[a], p[b]);
+        }
+
+        push_zipline(a, b, edgea, edgeb, zip);
+
+        pop_ziplines();
     }
 
     // Clip edges of vorL that's on the right of sigma
@@ -690,10 +1099,10 @@ class Voronoi extends DCEL {
     // Return a collection of edges, in ccw order,
     // of site p.
     // vedges_of_site(p) {
-        // For each site, store a list of vertices that are closest to it
-        // So at the merge stage, you have to figure out some ways to merge the hull
-        // sites as well
-        // return site_map[]
+    // For each site, store a list of vertices that are closest to it
+    // So at the merge stage, you have to figure out some ways to merge the hull
+    // sites as well
+    // return site_map[]
     // }
 
     static bridges(p1, p2) {
@@ -748,11 +1157,6 @@ function tuple2vert(plist) {
 }
 
 function main() {
-    var canvas = d3.select("canvas").node();
-    ctx = canvas.getContext("2d"),
-        width = canvas.width,
-        height = canvas.height;
-
     var n = 4;
     var random_pts = d3.range(n)
         .map(function(d) { return new Vertex(Math.random() * width, Math.random() * height); });
@@ -769,12 +1173,7 @@ function drawVoronoi(vor) {
 }
 
 function drawGraph(sites, vertices, edges) {
-    var canvas = d3.select("canvas").node();
-    ctx = canvas.getContext("2d"),
-        width = canvas.width,
-        height = canvas.height;
-
-    ctx.clearRect(0, 0, width, height);
+    // ctx.clearRect(0, 0, width, height);
 
     // Draw site
     ctx.beginPath();
@@ -789,7 +1188,6 @@ function drawGraph(sites, vertices, edges) {
         drawEdge(edges[i]);
     ctx.strokeStyle = "rgba(0,0,0,0.2)";
     ctx.stroke();
-
 }
 
 function drawSite(site) {
@@ -809,6 +1207,14 @@ function drawEdge(edge) {
 function drawEdgeBetween(p1, p2) {
     ctx.moveTo(p1.x, p1.y);
     ctx.lineTo(p2.x, p2.y);
+}
+
+function drawOutStandingEdges(edges) {
+    ctx.beginPath();
+    for (var i = 0; i < edges.length; i++)
+        drawEdgeBetween(edges[i][0], edges[i][1]);
+    ctx.strokeStyle = "rgba(0,0,0,0.2)";
+    ctx.stroke();
 }
 
 function clw(p1, p2, p3, report_colinear=false) {
@@ -866,7 +1272,7 @@ function bisector(v1, v2) {
     return [k, b];
 }
 
-function distance_square(p1, p2) {
+function dist2(p1, p2) {
     return (p2.x - p1.x) * (p2.x - p1.x) + (p2.y - p1.y) * (p2.y - p1.y);
 }
 
@@ -923,6 +1329,321 @@ function in_the_middle_of_line(A, B, P) {
 
 function dot(p, q) {
     return p[0] * q[0] + p[1] * q[1];
+}
+
+function snap_point(q, l) {
+    var dx1 = q.x - l.p1.x;
+    var dy1 = q.y - l.p1.y;
+    var dx2 = q.x - l.p2.x;
+    var dy2 = q.y - l.p2.y;
+
+    if(!(l.reach & REACH_BACKWARD != 0) &&
+       dx1 * dx1 + dy1 * dy1 <= CLOSE * CLOSE) {
+        q = l.p1;
+        return true;
+    }
+    else if(!(l.reach & REACH_FORWARD) &&
+            dx2 * dx2 + dy2 * dy2 <= CLOSE * CLOSE) {
+        q = l.p2;
+        return true;
+    }
+    return false;
+}
+
+function fix_p1(l, q) {
+    l.reach &= ~REACH_BACKWARD;
+    if(l.reach & REACH_FORWARD) {
+        var dx = q.x - l.p1.x;
+        var dy = q.y - l.p1.y;
+        l.p2.x += dx;
+        l.p2.y += dy;
+    }
+    l.p1 = q;
+}
+
+function fix_p2(l, q) {
+    l.reach &= ~REACH_FORWARD;
+    if(l.reach & REACH_BACKWARD) {
+        var dx = q.x - l.p2.x;
+        var dy = q.y - l.p2.y;
+        l.p1.x += dx;
+        l.p1.y += dy;
+    }
+    l.p2 = q;
+}
+
+function moveline(l, c) {
+    var dx = c.x - l.p1.x;
+    var dy = c.y - l.p1.y;
+    l.p1 = c;
+    l.p2.x += dx;
+    l.p2.y += dy;
+    return l;
+}
+
+function rclip(line, zip, x) {
+    if(cross(line, zip) < 0) {
+        fix_p1(line, x);
+    }
+    else {
+        fix_p2(line, x);
+    }
+}
+
+function lclip(line, zip, x) {
+    if(cross(line, zip) > 0) {
+        fix_p1(line, x);
+    }
+    else {
+        fix_p2(line, x);
+    }
+}
+
+function rdelete(v, zip, x) {
+    var edge = new HalfEdge();
+    var head = new HalfEdge();
+    var p1 = zip.p1;
+    var p2 = zip.p2;
+    var l0 = new Line();
+    l0.p1 = x;
+    l0.p2 = x;
+    l0.reach = REACH_NONE;
+    edge = head = vertices[v].head_edge;
+    do {
+        if(!edge.is_void()) {
+
+            if(clw(p1, p2, edge.divline.p1, true)
+                && clw(p1, p2, edge.divline.p2, true)) {
+                edge.divline = l0;
+            }
+        }
+        edge = edge.next;
+    } while(!edge.eq(head));
+}
+
+function ldelete(v, zip, x) {
+    var edge = new HalfEdge();
+    var head = new HalfEdge();
+    var p1 = zip.p1;
+    var p2 = zip.p2;
+    var l0 = new Line();
+    l0.p1 = x;
+    l0.p2 = x;
+    l0.reach = REACH_NONE;
+    edge = head = vertices[v].head_edge;
+    do {
+        if(!is_void_edge(edge)) {
+
+        if(ccw(p1, p2, edge.divline.p1, true)
+           && ccw(p1, p2, edge.divline.p2, true)) {
+            edge.divline = l0;
+        }
+        }
+        edge = edge.next;
+    } while(!edge.eq(head));
+}
+
+function cross(l1, l2) {
+    return (l1.p2.x - l1.p1.x) * (l2.p2.y - l2.p1.y)
+         - (l1.p2.y - l1.p1.y) * (l2.p2.x - l2.p1.x);
+}
+
+function push_zipline(a, b, edgea, edgeb, zip) {
+    var l = Line.copy(zip);
+    var e1 = HalfEdge.copy(a, b, l);
+    var e2 = HalfEdge.copy(a, b, l);
+    e1.pair_with(e2);
+    left.push(a);
+    right.push(b);
+    leftedge.push(edgea);
+    rightedge.push(edgeb);
+    leftzip.push(e1);
+    rightzip.push(e1);
+    tos++;
+}
+
+function pop_ziplines() {
+    var i, last;
+
+    last = tos - 1;
+    if(last != 0) while(left[last-1] == left[last]) last--;
+
+    for(i = 0; i < last; i++) {
+        add_edge_after(leftedge[i], leftzip[i]);
+    }
+
+    for(i = tos-1; i >= last; i--) add_edge_before(vertices[left[i]].head_edge, leftzip[i]);
+
+    last = tos-1;
+    if(last != 0) while(right[last-1] == right[last]) last--;
+    for(i = 0; i < last; i++) {
+        add_edge_before(rightedge[i], rightzip[i]);
+    }
+    for(i = tos-1; i >= last; i--) add_edge_after(vertices[right[i]].tail_edge, rightzip[i]);
+
+    last = tos-1;
+    vertices[left[0]].tail_edge = leftzip[0];
+    vertices[right[0]].head_edge = rightzip[0];
+    vertices[left[last]].head_edge = leftzip[last];
+    vertices[right[last]].tail_edge = rightzip[last];
+
+    clean_edgelist(left[0]);
+    i = 1;
+    while(i < tos) {
+        if(left[i] != left[i-1]) clean_edgelist(left[i]);
+        i++;
+    }
+
+    clean_edgelist(right[0]);
+    i = 1;
+    while(i < tos) {
+        if(right[i] != right[i-1]) clean_edgelist(right[i]);
+        i++;
+    }
+
+    tos = 0;
+}
+
+function delete_line(l) {
+    n_lines--;
+}
+
+function remove_edge(edge) {
+    var v = edge.source;
+    var prev = edge.prev;
+    var next = edge.next;
+    prev.next = next;
+    next.prev = prev;
+    if(vertices[v].head_edge == edge) vertices[v].head_edge = next;
+    if(vertices[v].tail_edge == edge) vertices[v].tail_edge = prev;
+}
+
+function delete_edge_pair(edge) {
+    remove_edge(edge.partner);
+    remove_edge(edge);
+    // delete_line(edge.divline);
+}
+
+function assign_edge(source, edge) {
+    edge.next = edge.prev = edge;
+    vertices[source].head_edge = vertices[source].tail_edge = edge;
+}
+
+function assign_edge2(source, edge1, edge2) {
+    edge1.next = edge1.prev = edge2;
+    edge2.next = edge2.prev = edge1;
+    vertices[source].head_edge = edge1;
+    vertices[source].tail_edge = edge2;
+}
+
+function add_edge(edge_before, edge_after, edge) {
+    edge.next = edge_after;
+    edge.prev = edge_before;
+    edge_before.next = edge;
+    edge_after.prev = edge;
+}
+
+function add_edge_after(edge_before, edge) {
+    add_edge(edge_before, edge_before.next, edge);
+}
+
+function add_edge_before(edge_after, edge) {
+    add_edge(edge_after.prev, edge_after, edge);
+}
+
+function clean_edgelist(v) {
+    var edge = new HalfEdge();
+    var next = new HalfEdge();
+    var head = vertices[v].head_edge;
+    if(head.is_void()) {
+        do {
+            head = head.next;
+        } while(head.is_void());
+        vertices[v].head_edge = head;
+    }
+    edge = head.next;
+    while(!edge.eq(head)) {
+        next = edge.next;
+        if(edge.is_void()) delete_edge_pair(edge);
+        edge = next;
+    }
+}
+
+function linkhull3(v1, v2, v3) {
+    vertices[v1].prev = v3;
+    vertices[v1].next = v2;
+    vertices[v2].prev = v1;
+    vertices[v2].next = v3;
+    vertices[v3].prev = v2;
+    vertices[v3].next = v1;
+}
+
+function linkhull2(v1, v2) {
+    vertices[v1].prev = v2;
+    vertices[v1].next = v2;
+    vertices[v2].prev = v1;
+    vertices[v2].next = v1;
+}
+
+function construct3(v1, v2, v3, lA, lB, lC) {
+    var sA = Line.copy(lA);
+    var sB = Line.copy(lB);
+    var sC = Line.copy(lC);
+    var e12 = HalfEdge.copy(v1, v2, sA);
+    var e21 = HalfEdge.copy(v2, v1, sA);
+    var e23 = HalfEdge.copy(v2, v3, sB);
+    var e32 = HalfEdge.copy(v3, v2, sB);
+    var e31 = HalfEdge.copy(v3, v1, sC);
+    var e13 = HalfEdge.copy(v1, v3, sC);
+    e12.pair_with(e21);
+    e23.pair_with(e32);
+    e31.pair_with(e13);
+    assign_edge2(v1, e12, e13);
+    assign_edge2(v2, e23, e21);
+    assign_edge2(v3, e31, e32);
+    linkhull3(v1, v2, v3);
+}
+
+function construct2(v1, v2, v3, lA, lB) {
+    var sA = Line.copy(lA);
+    var sB = Line.copy(lB);
+    var e12 = HalfEdge.copy(v1, v2, sA);
+    var e21 = HalfEdge.copy(v2, v1, sA);
+    var e23 = HalfEdge.copy(v2, v3, sB);
+    var e32 = HalfEdge.copy(v3, v2, sB);
+    e12.pair_with(e21);
+    e23.pair_with(e32);
+    assign_edge(v1, e12);
+    assign_edge2(v2, e21, e23);
+    assign_edge(v3, e32);
+    linkhull3(v1, v3, v2);
+}
+
+function construct1(v1, v2, l) {
+    var s = Line.copy(l);
+    var e12 = HalfEdge.copy(v1, v2, s);
+    var e21 = HalfEdge.copy(v2, v1, s);
+    e12.pair_with(e21);
+    assign_edge(v1, e12);
+    assign_edge(v2, e21);
+    linkhull2(v1, v2);
+}
+
+function store_lines(r) {
+    var i, j;
+    var l;
+
+    // l = r.l = malloc(n_lines * sizeof(line_t));
+    j = 0;
+    for (i = 0; i < vertices.length; i++) {
+        var edge, head;
+        edge = head = vertices[i].head_edge;
+        if (edge) do {
+            if (edge.target > i) l[j++] = edge.divline;
+            edge = edge.next;
+        } while (!edge.eq(head));
+    }
+    // r.n_lines = j;
 }
 
 main();
