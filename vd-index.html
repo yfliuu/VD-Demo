@@ -21,7 +21,7 @@
 
         <body>
             <nav class="navbar navbar-dark sticky-top bg-dark flex-md-nowrap p-0">
-                <a class="navbar-brand col-sm-3 col-md-2 mr-0" href="vd-template.html">CPSC-620 Course Project</a>
+                <a class="navbar-brand col-sm-3 col-md-2 mr-0" href="vd-index.html">CPSC-620 Course Project</a>
                 <ul class="navbar-nav px-3">
                     <li class="nav-item text-nowrap">
                         <font color="white">Yifan Liu</font>
@@ -35,16 +35,20 @@
                         <div class="sidebar-sticky">
                             <ul class="nav flex-column">
                                 <li class="nav-item">
-                                    <a class="nav-link active" href="vd-template.html">
-                                        Hover Voronoi<span class="sr-only">(current)</span>
+                                    <a class="nav-link active" href="vd-index.html">
+                                        Divide and Conquer<span class="sr-only">(current)</span>
                                     </a>
                                 </li>
                                 <li class="nav-item">
-                                    <a class="nav-link" href="vd-daq.html">
-                                        Divide and Conquer
+                                    <a class="nav-link" href="vd-hover-fortunes.html">
+                                        Hover Voronoi
                                     </a>
                                 </li>
-                                <li class="nav-item"></li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="vd-metrics.html">
+                                        Manhattan Voronoi
+                                    </a>
+                                </li>
                                 <li class="nav-item"></li>
                                 <li class="nav-item"></li>
                                 <li class="nav-item"></li>
@@ -56,17 +60,17 @@
                     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
                         <h1 class="h2">Voronoi Diagram Demo</h1>
                         <div class="btn-toolbar mb-2 mb-md-0">
-                            <button type="button" class="btn btn-sm btn-outline-secondary mr-2 active" id="triToggleBtn" data-toggle="button" aria-pressed="false" autocomplete="off" onclick="triToggleBtnClick()">
-                                Delaunay triangulation
-                            </button>
-                            <div class="btn-group btn-group-toggle mr-2" data-toggle="buttons" id="distMetricButton">
-                                <label class="btn btn-sm btn-outline-secondary active">
-                                    <input type="radio" name="options" id="option1" autocomplete="off" checked> Euclidean
-                                </label>
-                                <label class="btn btn-sm btn-outline-secondary">
-                                    <input type="radio" name="options" id="option2" autocomplete="off"> Manhattan
-                                </label>
-                            </div>
+                            <!-- <button type="button" class="btn btn-sm btn-outline-secondary mr-2 active" id="triToggleBtn" data-toggle="button" aria-pressed="false" autocomplete="off" onclick="triToggleBtnClick()"> -->
+                                <!-- Delaunay triangulation -->
+                            <!-- </button> -->
+                            <!-- <div class="btn-group btn-group-toggle mr-2" data-toggle="buttons" id="distMetricButton"> -->
+                                <!-- <label class="btn btn-sm btn-outline-secondary active"> -->
+                                    <!-- <input type="radio" name="options" id="option1" autocomplete="off" checked> Euclidean -->
+                                <!-- </label> -->
+                                <!-- <label class="btn btn-sm btn-outline-secondary"> -->
+                                    <!-- <input type="radio" name="options" id="option2" autocomplete="off"> Manhattan -->
+                                <!-- </label> -->
+                            <!-- </div> -->
                         </div>
                     </div>
 
@@ -101,5 +105,5 @@
                 <!-- Graphs -->
                 <script src="https://d3js.org/d3.v5.min.js"></script>
                 <script src="./js/d3-delaunay.js"></script>
-                <script src="./js/vd-demo.js"></script>
+                <script src="./js/voronoi_divide_and_conquer.js"></script>
         </body></html>

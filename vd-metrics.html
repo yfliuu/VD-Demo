@@ -21,7 +21,7 @@
 
         <body>
             <nav class="navbar navbar-dark sticky-top bg-dark flex-md-nowrap p-0">
-                <a class="navbar-brand col-sm-3 col-md-2 mr-0" href="vd-template.html">CPSC-620 Course Project</a>
+                <a class="navbar-brand col-sm-3 col-md-2 mr-0" href="vd-index.html">CPSC-620 Course Project</a>
                 <ul class="navbar-nav px-3">
                     <li class="nav-item text-nowrap">
                         <font color="white">Yifan Liu</font>
@@ -35,16 +35,20 @@
                         <div class="sidebar-sticky">
                             <ul class="nav flex-column">
                                 <li class="nav-item">
-                                    <a class="nav-link" href="vd-template.html">
-                                        Hover Voronoi<span class="sr-only">(current)</span>
-                                    </a>
-                                </li>
-                                <li class="nav-item">
-                                    <a class="nav-link active" href="vd-daq.html">
+                                    <a class="nav-link" href="vd-index.html">
                                         Divide and Conquer
                                     </a>
                                 </li>
-                                <li class="nav-item"></li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="vd-hover-fortunes.html">
+                                        Hover Voronoi
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link active" href="vd-metrics.html">
+                                        Manhattan Voronoi<span class="sr-only">(current)</span>
+                                    </a>
+                                </li>
                                 <li class="nav-item"></li>
                                 <li class="nav-item"></li>
                                 <li class="nav-item"></li>
@@ -56,29 +60,31 @@
                     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
                         <h1 class="h2">Voronoi Diagram Demo</h1>
                         <div class="btn-toolbar mb-2 mb-md-0">
-                            <button type="button" class="btn btn-sm btn-outline-secondary mr-2 active" id="triToggleBtn" data-toggle="button" aria-pressed="false" autocomplete="off" onclick="triToggleBtnClick()">
-                                Delaunay triangulation
-                            </button>
-                            <div class="btn-group btn-group-toggle mr-2" data-toggle="buttons" id="distMetricButton">
-                                <label class="btn btn-sm btn-outline-secondary active">
-                                    <input type="radio" name="options" id="option1" autocomplete="off" checked> Euclidean
-                                </label>
-                                <label class="btn btn-sm btn-outline-secondary">
-                                    <input type="radio" name="options" id="option2" autocomplete="off"> Manhattan
-                                </label>
-                            </div>
+                            <!-- <button type="button" class="btn btn-sm btn-outline-secondary mr-2 active" id="triToggleBtn" data-toggle="button" aria-pressed="false" autocomplete="off" onclick="triToggleBtnClick()"> -->
+                                <!-- Delaunay triangulation -->
+                            <!-- </button> -->
+                            <!-- <div class="btn-group btn-group-toggle mr-2" data-toggle="buttons" id="distMetricButton"> -->
+                                <!-- <label class="btn btn-sm btn-outline-secondary active"> -->
+                                    <!-- <input type="radio" name="options" id="option1" autocomplete="off" checked> Manhattan -->
+                                <!-- </label> -->
+                                <!-- <label class="btn btn-sm btn-outline-secondary"> -->
+                                    <!-- <input type="radio" name="options" id="option2" autocomplete="off"> Minkowski -->
+                                <!-- </label> -->
+                            <!-- </div> -->
                         </div>
                     </div>
 
                     <!-- <canvas class="my-4 chartjs-render-monitor" id="myChart" width="2304" height="972" style="display: block; height: 486px; width: 1152px;"></canvas> -->
                     <canvas class="my-4 chartjs-render-monitor" id="myChart" width="1152" height="486"></canvas>
-                    <div class="input-group mb-3">
-                        <div class="input-group-prepend">
-                            <span class="input-group-text" id="basic-addon1"># of points</span>
-                        </div>
-                        <input type="text" class="form-control" placeholder="Click Confirm or press Enter" aria-label="nPts" aria-describedby="basic-addon1" id="nPts">
-                        <button class="btn btn-sm btn-outline-secondary">Confirm</button>
-                    </div>
+                    <!-- <div class="input-group mb-3"> -->
+                        <!-- <div class="input-group-prepend"> -->
+                            <!-- <span class="input-group-text" id="basic-addon1"># of points</span> -->
+                        <!-- </div> -->
+                        <!-- <input type="text" class="form-control" placeholder="Click Confirm or press Enter" aria-label="nPts" aria-describedby="basic-addon1" id="nPts"> -->
+                        <!-- <button class="btn btn-sm btn-outline-secondary">Confirm</button> -->
+                    <!-- </div> -->
+                    <p>This diagram was calculated using brute force method: for every pixel in the drawing canvas(1152 by 486), find the closest site and color it correspondingly.</p>
+                    <p></p>
                     <p id="errDiv"></p>
                     </main>
                 </div>
@@ -101,5 +107,5 @@
                 <!-- Graphs -->
                 <script src="https://d3js.org/d3.v5.min.js"></script>
                 <script src="./js/d3-delaunay.js"></script>
-                <script src="./js/voronoi.js"></script>
+                <script src="./js/vd-metrics.js"></script>
         </body></html>

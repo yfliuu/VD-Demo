@@ -4,7 +4,7 @@
 //
 // Part of the code was borrowed from http://www.cosc.canterbury.ac.nz/tad.takaoka/alg/geometry/voronoi.c
 
-var TEST_NUM_PTS = 30;
+var TEST_NUM_PTS = 100;
 var EXTEND = 100000;
 var DISTANT = 100000;
 var CLOSE = 0.000001;
@@ -29,6 +29,10 @@ class Point {
     constructor() {
         this.x = null;
         this.y = null;
+    }
+
+    static val_close(v1, v2) {
+        return Math.abs(v1 - v2) <= CLOSE;
     }
 
     static from_coord(x, y) {
@@ -93,6 +97,22 @@ class Line {
         newl.p2 = this.p2.copy();
         newl.reach = this.reach;
         return newl;
+    }
+
+
+    other(p1) {
+        if (Point.val_close(p1.x, this.p1.x) && Point.val_close(p1.y == this.p1.y)) {
+            return this.p2;
+        } else if (Point.val_close(p1.x, this.p2.x) && Point.val_close(p1.y == this.p2.y)) {
+            return this.p1;
+        } else {
+            return null;
+        }
+    }
+
+    outside_point() {
+        if (this.p1.inside()) return this.p2;
+        return this.p1;
     }
 
     fix_p1(q) {
@@ -278,12 +298,39 @@ class Vertex {
     prev = null;
     head_edge = null;
     tail_edge = null;
+    p = null;
 
     constructor() {
         this.next = null;
         this.prev = null;
         this.head_edge =  null;
         this.tail_edge = null;
+        this.p = null;
+    }
+}
+
+class Cell {
+    id = null;
+    point = null;
+    color = null;
+    edges = null;
+    vertices = null;
+    vindexes = null;
+
+    constructor() {
+        this.id = null;
+        this.point = null;
+        this.edges = [];
+        this.color = 0;
+        this.vertices = [];
+        this.vindexes = [];
+    }
+
+    intersect(cell) {
+        for (var i = 0; i < cell.vindexes.length; i++) {
+            if (cell.vindexes.has(cell.vindexes[i])) return true;
+        }
+        return false;
     }
 }
 
@@ -295,6 +342,7 @@ class Voronoi {
 
         this.n_points = n;
         this.n_lines = 0;
+        this.l = 0;
 
         rpoints = this.p = new Array(n);
         for (i = 0; i < n; i++) rpoints[i] = points[i];
@@ -307,6 +355,45 @@ class Voronoi {
             rvertices[i].next = rvertices[i].prev = i;
             rvertices[i].head_edge = rvertices[i].tail_edge = 0;
         }
+    }
+
+    cells() {
+        var remaining = new Set();
+        for (var i = 0; i < this.n_vertices; i++) remaining.add(i);
+        var cells = []
+
+        while (remaining.size > 0) {
+            var ind = remaining.values().next().value;
+            var vert = this.vertices[ind];
+            var edge = vert.head_edge;
+            var cell = new Cell();
+
+            do {
+                if (!edge.is_void()) {
+                    var target_point = new Point();
+                    cell.id = cells.length;
+                    cell.edges.push(edge);
+                    if (intersect(target_point, edge.divline, edge.next.divline)) {
+                        cell.vertices.push(target_point);
+                        if (edge == edge.next.next) {
+                            cell.vertices.push(edge.divline.outside_point());
+                            cell.vertices.push(edge.next.divline.outside_point());
+                            cell.vertices.push(target_point);
+                            edge = edge.next;
+                        }
+                    } else {
+                        var endp = edge.divline.p1.inside() ? edge.divline.p2 : edge.divline.p1;
+                        var next = edge.next.divline.p1.inside() ? edge.next.divline.p2 : edge.next.divline.p1;
+                        cell.vertices.push(endp);
+                        cell.vertices.push(next);
+                    }
+                    remaining.delete(edge.source);
+                }
+                edge = edge.next;
+            } while (edge != vert.head_edge);
+            cells.push(cell);
+        }
+        return cells;
     }
 
     static voronoi(points, n) {
@@ -574,16 +661,20 @@ function turn(c, p1, p2) {
 function clw(c, p1, p2) {
     return (turn(c, p1, p2) < 0);
 }
+
 function clweq(c, p1, p2) {
     return (turn(c, p1, p2) <= 0);
 }
+
 function ccw(c, p1, p2) {
     return (turn(c, p1, p2) > 0);
 }
+
 function ccweq(c, p1, p2) {
     return (turn(c, p1, p2) >= 0);
 }
 
+// If a and b intersects, the result will be stored in r
 function intersect(r, a, b) {
     var p1 = a.p1, p2 = a.p2;
     var q1 = b.p1, q2 = b.p2;
@@ -680,9 +771,11 @@ function add_edge(edge_before, edge_after, edge) {
     edge_before.next = edge;
     edge_after.prev = edge;
 }
+
 function add_edge_after(edge_before, edge) {
     add_edge(edge_before, edge_before.next, edge);
 }
+
 function add_edge_before(edge_after, edge) {
     add_edge(edge_after.prev, edge_after, edge);
 }
@@ -974,6 +1067,9 @@ function draw_diagram() {
     var i;
 
     ctx.clearRect(0, 0, width, height);
+
+    draw_cell_of_voronoi(r);
+
     ctx.beginPath();
     for (i = 0; i < r.n_points; i++) showpoint(r.p[i]);
     ctx.fillStyle = "#000";
@@ -983,12 +1079,12 @@ function draw_diagram() {
 
     ctx.beginPath();
     for (i = 0; i < r.n_lines; i++) showline(r.l[i]);
-    ctx.strokeStyle = "rgba(0,0,0,0.2)";
+    ctx.strokeStyle = "#000";
     ctx.stroke();
 }
 
-function gen_points() {
-    var n = TEST_NUM_PTS;
+function gen_points(n) {
+    n_input_points = 0;
     var random_pts = d3.range(n)
         .map(function(d) { return [Math.random() * width, Math.random() * height]; });
     for (var i = 0; i < random_pts.length; i++) {
@@ -996,13 +1092,70 @@ function gen_points() {
     }
 }
 
+function gen_random_color_mapping(n) {
+    var result = new Object();
+
+    for (var i = 0; i < n; i++) {
+        var v1 = Math.floor(Math.random() * 255);
+        var v2 = Math.floor(Math.random() * 255);
+        var v3 = Math.floor(Math.random() * 255);
+        result[i] = 'rgb(' + v1.toString() + ',' + v2.toString() + ',' + v3.toString() + ')';
+    }
+    return result;
+}
+
+function draw_cell_of_voronoi(r) {
+    var cells = r.cells();
+    var color_mapping = gen_random_color_mapping(r.n_vertices);
+    for (var i = 0; i < cells.length; i++) {
+        var cell = cells[i];
+        var start = cell.vertices[0];
+        ctx.beginPath();
+        ctx.moveTo(start.x, start.y);
+        for (var j = 0; j < cell.vertices.length; j++) {
+            var vert = cell.vertices[j];
+            ctx.lineTo(vert.x, vert.y);
+        }
+        ctx.closePath();
+        ctx.fillStyle = color_mapping[i];
+        ctx.fill();
+    }
+}
+
+function redraw(n) {
+    gen_points(n);
+    draw_diagram();
+}
+
 function draw_site(x, y) {
     ctx.moveTo(x + 2.5, y);
     ctx.arc(x, y, 2.5, 0, 2 * Math.PI, false);
 }
 
+function configConfirmCallback() {
+    var n = parseInt(document.getElementById("nPts").value);
+    if(n <= 1 || n > MAX_POINTS) {
+        errDiv.innerHTML = '<font color="red">The number of points should be between 2~' + MAX_POINTS.toString() +  '.</font>';
+        errDiv.style.display = "block";
+    } else if (Number.isNaN(n)){
+        errDiv.innerHTML = '<font color="red">Please input something.</font>';
+        errDiv.style.display = "block";
+    } else {
+        redraw(n);
+        errDiv.style.display = "none"
+    }
+}
+
+var nPtsInput = document.getElementById("nPts");
+nPtsInput.addEventListener("keyup", function(event) {
+    if (event.keyCode === 13) {
+        event.preventDefault();
+        configConfirmCallback();
+    }
+});
+
 function main() {
-    gen_points();
+    gen_points(TEST_NUM_PTS);
     draw_diagram();
 }
 
