@@ -948,7 +948,7 @@ function lower_line(l, r) {
         b = b2;
         b2 = vertices[b].prev;
     }
-    for (;;) {
+    while (true) {
         old = a;
         while (ccw(p[b], p[a], p[a2])) {
             a = a2;
@@ -976,7 +976,7 @@ function upper_line(l, r) {
         b = b2;
         b2 = vertices[b].next;
     }
-    for (;;) {
+    while (true) {
         old = a;
         while (clw(p[b], p[a], p[a2])) {
             a = a2;

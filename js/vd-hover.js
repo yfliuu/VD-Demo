@@ -8,6 +8,8 @@ var sitesList = d3.range(100)
 
 var voronoi = d3.voronoi()
     .extent([[-1, -1], [width + 1, height + 1]]);
+// var delaunay = new Delaunay.from(sitesList).voronoi([0, 0, 1152, 486])
+// var voronoi = delaunay.voronoi([0, 0, 1152, 486]);
 
 var nPtsInput = document.getElementById("nPts");
 nPtsInput.addEventListener("keyup", function(event) {
@@ -31,7 +33,7 @@ $("#distMetricButton :input").change(function() {
 
 function configConfirmCallback() {
     var n = parseInt(document.getElementById("nPts").value);
-    var MAX_POINTS = 3000;
+    var MAX_POINTS = 10000;
     if(n <= 1 || n > MAX_POINTS) {
         errDiv.innerHTML = '<font color="red">The number of points should be between 2~' + MAX_POINTS.toString() +  '.</font>';
         errDiv.style.display = "block";
@@ -55,7 +57,10 @@ function redraw(sites) {
     var diagram = voronoi(sites),
         links = diagram.links(),
         polygons = diagram.polygons();
+    draw_diagram(sites, diagram, links, polygons);
+}
 
+function draw_diagram(sites, diagram, links, polygons) {
     context.clearRect(0, 0, width, height);
     context.beginPath();
     drawCell(polygons[0]);
@@ -85,6 +90,7 @@ function redraw(sites) {
     context.fill();
     context.strokeStyle = "#fff";
     context.stroke();
+
 }
 
 function drawSite(site) {
